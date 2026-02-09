@@ -28,6 +28,15 @@ function newUrl(urlStr) {
   }
 }
 
+// 统一伪造 Referer
+function forgeReferer(headers, targetObj) {
+  const newHeaders = new Headers(headers)
+  newHeaders.delete('referer')
+  // 固定伪造为目标域名
+  newHeaders.set('referer', targetObj.origin + '/')
+  return newHeaders
+}
+
 addEventListener('fetch', e => {
   const ret = fetchHandler(e)
     .catch(err => makeRes('cfworker error:\n' + err.stack, 502))
@@ -52,7 +61,6 @@ async function fetchHandler(e) {
     return new Response(null, PREFLIGHT_INIT)
   }
 
-  // 首页逻辑：从 GitHub 拉取 index.html
   if (path === '/' || path === '/index.html') {
     const githubUrl = 'https://raw.githubusercontent.com/PyroSoar/cloudflare-workers-proxy/refs/heads/main/index.html'
     const res = await fetch(githubUrl)
@@ -80,9 +88,10 @@ async function fetchHandler(e) {
     if (!targetObj) {
       return makeRes('invalid proxy url: ' + targetUrl, 403)
     }
+    const forgedHeaders = forgeReferer(req.headers, targetObj)
     const reqInit = {
       method: 'GET',
-      headers: req.headers,
+      headers: forgedHeaders,
       redirect: 'manual',
     }
     return proxy(targetObj, reqInit, false, '', 0, false)
@@ -97,70 +106,37 @@ async function fetchHandler(e) {
 }
 
 async function httpHandler(req, pathname, isApi) {
-  const reqHdrRaw = req.headers
-  if (reqHdrRaw.has('x-jsproxy')) {
-    return Response.error()
-  }
-
-  let acehOld = false
-  let rawLen = ''
-  const reqHdrNew = new Headers(reqHdrRaw)
-  reqHdrNew.set('x-jsproxy', '1')
-
-  const refer = reqHdrNew.get('referer')
-  if (refer && refer.includes('?')) {
-    const query = refer.substr(refer.indexOf('?') + 1)
-    const param = new URLSearchParams(query)
-
-    for (const [k, v] of Object.entries(param)) {
-      if (k.substr(0, 2) === '--') {
-        if (k.substr(2) === 'aceh') acehOld = true
-        if (k.substr(2) === 'raw-info') {
-          [, rawLen] = v.split('|')
-        }
-      } else {
-        if (v) reqHdrNew.set(k, v)
-        else reqHdrNew.delete(k)
-      }
-    }
-    if (!param.has('referer')) {
-      reqHdrNew.delete('referer')
-    }
-  }
-
   const urlStr = pathname.replace(/^(https?):\/+/, '$1://')
   const urlObj = newUrl(urlStr)
   if (!urlObj) {
     return makeRes('invalid proxy url: ' + urlStr, 403)
   }
 
+  const forgedHeaders = forgeReferer(req.headers, urlObj)
+
   const reqInit = {
     method: req.method,
-    headers: reqHdrNew,
+    headers: forgedHeaders,
     redirect: 'manual',
     body: req.method === 'POST' ? req.body : undefined,
   }
 
-  return proxy(urlObj, reqInit, acehOld, rawLen, 0, isApi)
+  return proxy(urlObj, reqInit, false, '', 0, isApi)
 }
 
 async function proxy(urlObj, reqInit, acehOld, rawLen, retryTimes, isApi) {
-  // HEAD 检查大小
   try {
     const headRes = await fetch(urlObj.href, { method: 'HEAD', headers: reqInit.headers })
     const len = headRes.headers.get('content-length')
     if (len && parseInt(len) > MAX_SIZE) {
       return new Response('Payload Too Large', { status: 413 })
     }
-  } catch (err) {
-    // HEAD 请求失败时继续
-  }
+  } catch (err) {}
 
   const res = await fetch(urlObj.href, reqInit)
   const resHdrOld = res.headers
   const resHdrNew = new Headers(resHdrOld)
 
-  // /api/ 限制 Content-Type
   if (isApi) {
     const ct = (resHdrOld.get('content-type') || '').toLowerCase()
     const allowedTypes = [
@@ -222,7 +198,6 @@ async function proxy(urlObj, reqInit, acehOld, rawLen, retryTimes, isApi) {
   resHdrNew.set('--ver', JS_VER)
   resHdrNew.set('cf-workers-path', res.url)
 
-  // 新增代理信息头
   resHdrNew.set('X-Proxy-Method', reqInit.method || 'GET')
   resHdrNew.set('X-Proxy-Target', urlObj.href)
 
