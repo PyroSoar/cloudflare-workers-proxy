@@ -1,15 +1,16 @@
 'use strict'
 
-const JS_VER = 11
+const JS_VER = 13
 const MAX_RETRY = 1
 const MAX_SIZE = 1048576 // 1MB
+const BODY_METHODS = new Set(['POST', 'PUT', 'PATCH', 'QUERY', 'DELETE'])
 
 const PREFLIGHT_INIT = {
   status: 204,
   headers: new Headers({
     'access-control-allow-origin': '*',
     'access-control-allow-headers': '*',
-    'access-control-allow-methods': 'GET,POST,PUT,PATCH,TRACE,DELETE,HEAD,OPTIONS',
+    'access-control-allow-methods': 'GET,POST,PUT,PATCH,QUERY,TRACE,DELETE,HEAD,OPTIONS',
     'access-control-max-age': '1728000',
   }),
 }
@@ -118,7 +119,10 @@ async function httpHandler(req, pathname, isApi) {
     method: req.method,
     headers: forgedHeaders,
     redirect: 'manual',
-    body: req.method === 'POST' ? req.body : undefined,
+    // Preserve content for methods that define or commonly negotiate it.
+    // DELETE content has no general semantics, but is forwarded when supplied
+    // so APIs with an explicit client-origin agreement continue to work.
+    body: BODY_METHODS.has(req.method) ? req.body : undefined,
   }
 
   return proxy(urlObj, reqInit, false, '', 0, isApi)

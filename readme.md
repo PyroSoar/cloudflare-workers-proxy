@@ -26,9 +26,14 @@
   - 可以返回内置的 HTML 内容，或通过 `fetch` 从 GitHub 仓库拉取 `index.html`。
 - **API 模式 (`/api/`)**  
   - 只允许返回文本、JSON、XML、表单、流式数据等白名单类型。
+  - 保留原始 HTTP 请求方法，并转发 `POST`、`PUT`、`PATCH`、`QUERY` 请求体。
+  - `DELETE` 请求体没有通用的 HTTP 语义；仅应在目标 API 明确支持时使用，此时代理会原样转发。
+  - `GET`、`HEAD` 和 `TRACE` 不转发请求体。
+  - `OPTIONS` 由 Worker 用于 CORS 预检，不会代理到目标服务器。
+  - CORS 预检响应的允许方法列表包含 `QUERY`。
   - 请求前会先发起 `HEAD` 检查，超过 1MB 返回 `413 Payload Too Large`。
   - 响应头中会增加：
-    - `X-Proxy-Method`: 请求方法（GET/POST 等）
+    - `X-Proxy-Method`: 请求方法（GET/POST/QUERY 等）
     - `X-Proxy-Target`: 目标地址
 - **Fetch 模式 (`/fetch/`)**  
   - 用于资源直链（图片、音频等二进制）。
@@ -45,5 +50,16 @@ curl https://<your-worker>.workers.dev/
 # API 模式请求 JSON
 curl https://<your-worker>.workers.dev/api/https://httpbin.org/json
 
+# 使用 HTTP QUERY 方法（请求体会转发至目标服务器）
+curl -X QUERY https://<your-worker>.workers.dev/api/https://api.example.com/search \
+  -H "Content-Type: application/json" \
+  -d '{"query":"cloudflare workers"}'
+
+# PUT/PATCH/DELETE 请求体也会在适用时转发
+curl -X PUT https://<your-worker>.workers.dev/api/https://api.example.com/items/1 \
+  -H "Content-Type: application/json" \
+  -d '{"name":"updated item"}'
+
 # Fetch 模式请求图片
 curl https://<your-worker>.workers.dev/fetch/https://httpbin.org/image/png
+```
