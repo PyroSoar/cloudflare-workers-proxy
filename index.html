@@ -25,7 +25,8 @@
   <p><code>/api/</code> 用于客户端调用 API，支持多种请求方法（GET、POST、PUT、PATCH、QUERY、DELETE）。</p>
   <ul>
     <li>请求方法：保持原始方法。</li>
-    <li>请求头：会透传客户端请求头。</li>
+    <li>请求头：保留客户端的端到端请求头，并排除 Host、Connection、Content-Length 等逐跳或运行时管理的请求头。</li>
+    <li>来源伪造：Referer 设置为目标站点根地址，Origin 设置为目标站点源。</li>
     <li>请求体：转发 POST、PUT、PATCH 和 QUERY 方法的请求体。</li>
     <li>DELETE 请求体：仅在目标 API 明确支持时使用，代理会原样转发。</li>
     <li>GET、HEAD 和 TRACE：不转发请求体。</li>
@@ -56,7 +57,7 @@
   <p><code>/fetch/</code> 用于浏览器直接访问资源，始终使用 GET 方法。</p>
   <ul>
     <li>请求方法：统一为 GET。</li>
-    <li>请求头：不透传客户端请求头。</li>
+    <li>请求头：保留端到端请求头，并伪造目标站点的 Referer 和 Origin。</li>
     <li>请求体：不支持。</li>
     <li>响应处理：返回原始二进制数据（如图片、文件）。</li>
     <li>大小检查：同样通过 HEAD 请求判断文件大小，超过 1MB 会直接拒绝。</li>
@@ -74,7 +75,7 @@
   <p>通过 <code>/api/</code> 代理方式，可以绕过封锁：</p>
   <div class="example"><code>curl -X POST \<br>[ServerDomain]/api/https://api.openai.com/v1/chat/completions \<br>-H "Authorization: Bearer YOUR_API_KEY" \<br>-H "Content-Type: application/json" \<br>-d '{"model":"gpt-4","messages":[{"role":"user","content":"Hello"}]}'</code></div>
 
-  <h3>2. 代理仅限本域名使用的限制（伪造 Referer）</h3>
+  <h3>2. 代理仅限本域名使用的限制（伪造 Referer 和 Origin）</h3>
   <p>有些资源只允许在特定域名下访问，通常会检查 <code>Referer</code> 或 <code>Origin</code>。</p>
   <p>通过 <code>/fetch/</code> 代理方式，可以伪装成本域名访问：</p>
   <div class="example"><code>&lt;img src="[ServerDomain]/fetch/https://restricted-site.com/image.png" /&gt;</code></div>
@@ -83,7 +84,7 @@
   <table>
     <tr><th>特性</th><th>/api/</th><th>/fetch/</th></tr>
     <tr><td>请求方法</td><td>保持原始方法（GET/POST/QUERY 等）</td><td>统一为 GET</td></tr>
-    <tr><td>请求头</td><td>透传客户端请求头</td><td>不透传</td></tr>
+    <tr><td>请求头</td><td>保留端到端请求头，伪造 Referer 和 Origin</td><td>保留端到端请求头，伪造 Referer 和 Origin</td></tr>
     <tr><td>请求体</td><td>转发 POST、PUT、PATCH、QUERY；按目标 API 约定转发 DELETE</td><td>不支持</td></tr>
     <tr><td>响应处理</td><td>按 Content-Type 返回 JSON 或文本</td><td>返回原始二进制数据</td></tr>
     <tr><td>类型限制</td><td>仅允许指定 Content-Type</td><td>无限制</td></tr>

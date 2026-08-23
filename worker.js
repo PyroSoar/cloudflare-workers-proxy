@@ -1,9 +1,21 @@
 'use strict'
 
-const JS_VER = 13
+const JS_VER = 14
 const MAX_RETRY = 1
 const MAX_SIZE = 1048576 // 1MB
 const BODY_METHODS = new Set(['POST', 'PUT', 'PATCH', 'QUERY', 'DELETE'])
+const NON_FORWARDABLE_HEADERS = new Set([
+  'connection',
+  'content-length',
+  'host',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+])
 
 const PREFLIGHT_INIT = {
   status: 204,
@@ -29,12 +41,20 @@ function newUrl(urlStr) {
   }
 }
 
-// 统一伪造 Referer
-function forgeReferer(headers, targetObj) {
+// Preserve end-to-end headers and identify the request as target-origin traffic.
+function forgeHeaders(headers, targetObj) {
   const newHeaders = new Headers(headers)
-  newHeaders.delete('referer')
-  // 固定伪造为目标域名
+  const connectionHeaders = (newHeaders.get('connection') || '')
+    .split(',')
+    .map(name => name.trim().toLowerCase())
+    .filter(Boolean)
+
+  for (const name of [...NON_FORWARDABLE_HEADERS, ...connectionHeaders]) {
+    newHeaders.delete(name)
+  }
+
   newHeaders.set('referer', targetObj.origin + '/')
+  newHeaders.set('origin', targetObj.origin)
   return newHeaders
 }
 
@@ -89,7 +109,7 @@ async function fetchHandler(e) {
     if (!targetObj) {
       return makeRes('invalid proxy url: ' + targetUrl, 403)
     }
-    const forgedHeaders = forgeReferer(req.headers, targetObj)
+    const forgedHeaders = forgeHeaders(req.headers, targetObj)
     const reqInit = {
       method: 'GET',
       headers: forgedHeaders,
@@ -113,7 +133,7 @@ async function httpHandler(req, pathname, isApi) {
     return makeRes('invalid proxy url: ' + urlStr, 403)
   }
 
-  const forgedHeaders = forgeReferer(req.headers, urlObj)
+  const forgedHeaders = forgeHeaders(req.headers, urlObj)
 
   const reqInit = {
     method: req.method,

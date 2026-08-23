@@ -27,6 +27,8 @@
 - **API 模式 (`/api/`)**  
   - 只允许返回文本、JSON、XML、表单、流式数据等白名单类型。
   - 保留原始 HTTP 请求方法，并转发 `POST`、`PUT`、`PATCH`、`QUERY` 请求体。
+  - `/api/` 与 `/fetch/` 都会保留客户端的端到端请求头；`Host`、`Connection`、`Content-Length` 等逐跳或运行时管理的请求头除外。
+  - 将 `Referer` 伪造为目标站点根地址，并将 `Origin` 伪造为目标站点源。
   - `DELETE` 请求体没有通用的 HTTP 语义；仅应在目标 API 明确支持时使用，此时代理会原样转发。
   - `GET`、`HEAD` 和 `TRACE` 不转发请求体。
   - `OPTIONS` 由 Worker 用于 CORS 预检，不会代理到目标服务器。
@@ -37,6 +39,7 @@
     - `X-Proxy-Target`: 目标地址
 - **Fetch 模式 (`/fetch/`)**  
   - 用于资源直链（图片、音频等二进制）。
+  - 保留端到端请求头，并伪造目标站点的 `Referer` 和 `Origin`。
   - 同样有 1MB 限制。
   - 响应头中也会增加 `X-Proxy-Method` 和 `X-Proxy-Target`。
 
